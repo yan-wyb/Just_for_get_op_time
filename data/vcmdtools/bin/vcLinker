@@ -1,0 +1,3 @@
+#!/bin/bash
+echo vcLinker - linking
+echo finished

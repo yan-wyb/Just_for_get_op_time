@@ -1,0 +1,579 @@
+#pragma OPENCL EXTENSION cl_viv_vx_extension : enable
+
+#include "cl_viv_vx_ext.h"
+
+__kernel void vxcTensorPad_Const16Bits(
+    image2d_array_t input,
+    int padLeft,
+    int padRight,
+    int padTop,
+    int padBottom,
+    image2d_array_t output)
+{
+    int gidx = get_global_id(0);
+    int gidy = get_global_id(1);
+    int gidz = get_global_id(2);
+    int4 coord_out = (int4)(gidx, gidy, gidz, 0);
+    int inx = gidx - padLeft;
+    int iny = gidy - padTop;
+    int4 coord_in = (int4)(inx, iny, gidz, 0);
+    vxc_short8 src0, src1, src2, src3;
+    VXC_ReadImage2DArray(src0, input, coord_in, VXC_5BITOFFSET_XY(0, 0), VXC_MODIFIER(0, 7, 0, VXC_RM_TowardZero, 0));
+    VXC_ReadImage2DArray(src1, input, coord_in, VXC_5BITOFFSET_XY(0, 1), VXC_MODIFIER(0, 7, 0, VXC_RM_TowardZero, 0));
+    VXC_ReadImage2DArray(src2, input, coord_in, VXC_5BITOFFSET_XY(0, 2), VXC_MODIFIER(0, 7, 0, VXC_RM_TowardZero, 0));
+    VXC_ReadImage2DArray(src3, input, coord_in, VXC_5BITOFFSET_XY(0, 3), VXC_MODIFIER(0, 7, 0, VXC_RM_TowardZero, 0));
+    VXC_WriteImage2DArray(output, coord_out, src0, VXC_MODIFIER(0, 7, 0, VXC_RM_TowardZero, 0));
+    coord_out.y++;
+    VXC_WriteImage2DArray(output, coord_out, src1, VXC_MODIFIER(0, 7, 0, VXC_RM_TowardZero, 0));
+    coord_out.y++;
+    VXC_WriteImage2DArray(output, coord_out, src2, VXC_MODIFIER(0, 7, 0, VXC_RM_TowardZero, 0));
+    coord_out.y++;
+    VXC_WriteImage2DArray(output, coord_out, src3, VXC_MODIFIER(0, 7, 0, VXC_RM_TowardZero, 0));
+}
+
+__kernel void vxcTensorPad_Const8Bits(
+    image2d_array_t input,
+    int padLeft,
+    int padRight,
+    int padTop,
+    int padBottom,
+    image2d_array_t output)
+{
+    int gidx = get_global_id(0);
+    int gidy = get_global_id(1);
+    int gidz = get_global_id(2);
+    int4 coord_out = (int4)(gidx, gidy, gidz, 0);
+    int inx = gidx - padLeft;
+    int iny = gidy - padTop;
+    int4 coord_in = (int4)(inx, iny, gidz, 0);
+    vxc_char16 src0, src1, src2, src3;
+    VXC_ReadImage2DArray(src0, input, coord_in, VXC_5BITOFFSET_XY(0, 0), VXC_MODIFIER(0, 15, 0, VXC_RM_TowardZero, 0));
+    VXC_ReadImage2DArray(src1, input, coord_in, VXC_5BITOFFSET_XY(0, 1), VXC_MODIFIER(0, 15, 0, VXC_RM_TowardZero, 0));
+    VXC_ReadImage2DArray(src2, input, coord_in, VXC_5BITOFFSET_XY(0, 2), VXC_MODIFIER(0, 15, 0, VXC_RM_TowardZero, 0));
+    VXC_ReadImage2DArray(src3, input, coord_in, VXC_5BITOFFSET_XY(0, 3), VXC_MODIFIER(0, 15, 0, VXC_RM_TowardZero, 0));
+    VXC_WriteImage2DArray(output, coord_out, src0, VXC_MODIFIER(0, 15, 0, VXC_RM_TowardZero, 0));
+    coord_out.y++;
+    VXC_WriteImage2DArray(output, coord_out, src1, VXC_MODIFIER(0, 15, 0, VXC_RM_TowardZero, 0));
+    coord_out.y++;
+    VXC_WriteImage2DArray(output, coord_out, src2, VXC_MODIFIER(0, 15, 0, VXC_RM_TowardZero, 0));
+    coord_out.y++;
+    VXC_WriteImage2DArray(output, coord_out, src3, VXC_MODIFIER(0, 15, 0, VXC_RM_TowardZero, 0));
+}
+
+inline uchar* get_image2D_array_ptr(image2d_array_t  input)
+{
+    int8 desc;
+    _viv_asm(COPY, desc, input, sizeof(desc));
+    uchar *src_ptr = (uchar*)desc.s0;
+    return src_ptr;
+}
+
+inline int get_image2D_array_sliceSZ(image2d_array_t  input)
+{
+    int8 desc;
+    int sliceSz = 1;
+
+    _viv_asm(COPY, desc, input, sizeof(desc));
+    sliceSz = desc.s4;
+
+    return sliceSz;
+}
+
+_viv_uniform int input_width;
+_viv_uniform int output_width;
+_viv_uniform int padV;
+
+__kernel void vxcTensorPad_Const8Bits_Large(
+    image2d_array_t input,
+    int padLeft,
+    int padRight,
+    int padTop,
+    int padBottom,
+    image2d_array_t output)
+{
+    int w_left  = output_width - get_global_id(0);
+    int gidx    = w_left < 16 ? get_global_id(0) - (16 - w_left) : get_global_id(0);
+    int gidy    = get_global_id(1);
+    int gidz    = get_global_id(2);
+    int4 coord_out = (int4)(gidx, gidy, gidz, 0);
+    int inx = gidx - padLeft;
+    int iny = gidy;
+    int4 coord_in = (int4)(inx, iny, gidz, 0);
+    coord_in.x = coord_in.x < 0 ? 0 : coord_in.x;
+    int is_out_boder = ((inx < -15) || (inx >= input_width));
+    char pad_value = (char)padV;
+    vxc_char16 tmp0, tmp1, tmp2, tmp3;
+    vxc_char16 src0, src1, src2, src3;
+    char *src_ptr_base = (char *)get_image2D_array_ptr(input) + coord_in.z * get_image2D_array_sliceSZ(input);
+    char *src_ptr;
+    uchar *dst_ptr = (char *)get_image2D_array_ptr(output) + coord_out.z * get_image2D_array_sliceSZ(output);
+    src_ptr = src_ptr_base + (coord_in.x + coord_in.y * input_width);
+    dst_ptr = dst_ptr + (coord_out.x + coord_out.y * output_width);
+    if (is_out_boder)
+    {
+        src0 = pad_value;
+        src1 = src0;
+        src2 = src0;
+        src3 = src0;
+    }
+    else if (inx < 0)
+    {
+        int left = -inx;
+        src0 = (char)padV;
+        src1 = src0;
+        src2 = src0;
+        src3 = src0;
+        VXC_Vload16(tmp0, src_ptr, 0);
+        src_ptr = src_ptr + input_width;
+        VXC_Vload16(tmp1, src_ptr, 0);
+        src_ptr = src_ptr + input_width;
+        VXC_Vload16(tmp2, src_ptr, 0);
+        src_ptr = src_ptr + input_width;
+        VXC_Vload16(tmp3, src_ptr, 0);
+        switch (left)
+        {
+            case 1:
+               src0.s1234 = tmp0.s0123;
+               src1.s1234 = tmp1.s0123;
+               src2.s1234 = tmp2.s0123;
+               src3.s1234 = tmp3.s0123;
+               src0.s5678 = tmp0.s4567;
+               src1.s5678 = tmp1.s4567;
+               src2.s5678 = tmp2.s4567;
+               src3.s5678 = tmp3.s4567;
+               src0.s9abc = tmp0.s89ab;
+               src1.s9abc = tmp1.s89ab;
+               src2.s9abc = tmp2.s89ab;
+               src3.s9abc = tmp3.s89ab;
+               src0.sdef  = tmp0.scde;
+               src1.sdef  = tmp1.scde;
+               src2.sdef  = tmp2.scde;
+               src3.sdef  = tmp3.scde;
+            break;
+            case 2:
+               src0.s2345 = tmp0.s0123;
+               src1.s2345 = tmp1.s0123;
+               src2.s2345 = tmp2.s0123;
+               src3.s2345 = tmp3.s0123;
+               src0.s6789 = tmp0.s4567;
+               src1.s6789 = tmp1.s4567;
+               src2.s6789 = tmp2.s4567;
+               src3.s6789 = tmp3.s4567;
+               src0.sabcd = tmp0.s89ab;
+               src1.sabcd = tmp1.s89ab;
+               src2.sabcd = tmp2.s89ab;
+               src3.sabcd = tmp3.s89ab;
+               src0.sef = tmp0.scd;
+               src1.sef = tmp1.scd;
+               src2.sef = tmp2.scd;
+               src3.sef = tmp3.scd;
+            break;
+            case 3:
+               src0.s3456 = tmp0.s0123;
+               src1.s3456 = tmp1.s0123;
+               src2.s3456 = tmp2.s0123;
+               src3.s3456 = tmp3.s0123;
+               src0.s789a = tmp0.s4567;
+               src1.s789a = tmp1.s4567;
+               src2.s789a = tmp2.s4567;
+               src3.s789a = tmp3.s4567;
+               src0.sbcde = tmp0.s89ab;
+               src1.sbcde = tmp1.s89ab;
+               src2.sbcde = tmp2.s89ab;
+               src3.sbcde = tmp3.s89ab;
+               src0.sf = tmp0.sc;
+               src1.sf = tmp1.sc;
+               src2.sf = tmp2.sc;
+               src3.sf = tmp3.sc;
+            break;
+            case 4:
+               src0.s4567 = tmp0.s0123;
+               src1.s4567 = tmp1.s0123;
+               src2.s4567 = tmp2.s0123;
+               src3.s4567 = tmp3.s0123;
+               src0.s89ab = tmp0.s4567;
+               src1.s89ab = tmp1.s4567;
+               src2.s89ab = tmp2.s4567;
+               src3.s89ab = tmp3.s4567;
+               src0.scdef = tmp0.s89ab;
+               src1.scdef = tmp1.s89ab;
+               src2.scdef = tmp2.s89ab;
+               src3.scdef = tmp3.s89ab;
+            break;
+            case 5:
+               src0.s5678 = tmp0.s0123;
+               src1.s5678 = tmp1.s0123;
+               src2.s5678 = tmp2.s0123;
+               src3.s5678 = tmp3.s0123;
+               src0.s9abc = tmp0.s4567;
+               src1.s9abc = tmp1.s4567;
+               src2.s9abc = tmp2.s4567;
+               src3.s9abc = tmp3.s4567;
+               src0.sdef  = tmp0.s89a;
+               src1.sdef  = tmp1.s89a;
+               src2.sdef  = tmp2.s89a;
+               src3.sdef  = tmp3.s89a;
+            break;
+            case 6:
+               src0.s6789 = tmp0.s0123;
+               src1.s6789 = tmp1.s0123;
+               src2.s6789 = tmp2.s0123;
+               src3.s6789 = tmp3.s0123;
+               src0.sabcd = tmp0.s4567;
+               src1.sabcd = tmp1.s4567;
+               src2.sabcd = tmp2.s4567;
+               src3.sabcd = tmp3.s4567;
+               src0.sef = tmp0.s89;
+               src1.sef = tmp1.s89;
+               src2.sef = tmp2.s89;
+               src3.sef = tmp3.s89;
+            break;
+            case 7:
+               src0.s789a = tmp0.s0123;
+               src1.s789a = tmp1.s0123;
+               src2.s789a = tmp2.s0123;
+               src3.s789a = tmp3.s0123;
+               src0.sbcde = tmp0.s4567;
+               src1.sbcde = tmp1.s4567;
+               src2.sbcde = tmp2.s4567;
+               src3.sbcde = tmp3.s4567;
+               src0.sf = tmp0.s8;
+               src1.sf = tmp1.s8;
+               src2.sf = tmp2.s8;
+               src3.sf = tmp3.s8;
+            break;
+            case 8:
+               src0.s89ab = tmp0.s0123;
+               src1.s89ab = tmp1.s0123;
+               src2.s89ab = tmp2.s0123;
+               src3.s89ab = tmp3.s0123;
+               src0.scdef = tmp0.s4567;
+               src1.scdef = tmp1.s4567;
+               src2.scdef = tmp2.s4567;
+               src3.scdef = tmp3.s4567;
+            break;
+            case 9:
+               src0.s9abc = tmp0.s0123;
+               src1.s9abc = tmp1.s0123;
+               src2.s9abc = tmp2.s0123;
+               src3.s9abc = tmp3.s0123;
+               src0.sdef = tmp0.s456;
+               src1.sdef = tmp1.s456;
+               src2.sdef = tmp2.s456;
+               src3.sdef = tmp3.s456;
+            break;
+            case 10:
+               src0.sabcd = tmp0.s0123;
+               src1.sabcd = tmp1.s0123;
+               src2.sabcd = tmp2.s0123;
+               src3.sabcd = tmp3.s0123;
+               src0.sef = tmp0.s45;
+               src1.sef = tmp1.s45;
+               src2.sef = tmp2.s45;
+               src3.sef = tmp3.s45;
+            break;
+            case 11:
+               src0.sbcde = tmp0.s0123;
+               src1.sbcde = tmp1.s0123;
+               src2.sbcde = tmp2.s0123;
+               src3.sbcde = tmp3.s0123;
+               src0.sf = tmp0.s4;
+               src1.sf = tmp1.s4;
+               src2.sf = tmp2.s4;
+               src3.sf = tmp3.s4;
+            break;
+            case 12:
+               src0.scdef = tmp0.s0123;
+               src1.scdef = tmp1.s0123;
+               src2.scdef = tmp2.s0123;
+               src3.scdef = tmp3.s0123;
+            break;
+            case 13:
+               src0.sdef = tmp0.s012;
+               src1.sdef = tmp1.s012;
+               src2.sdef = tmp2.s012;
+               src3.sdef = tmp3.s012;
+            break;
+            case 14:
+               src0.sef = tmp0.s01;
+               src1.sef = tmp1.s01;
+               src2.sef = tmp2.s01;
+               src3.sef = tmp3.s01;
+            break;
+            case 15:
+               src0.sf = tmp0.s0;
+               src1.sf = tmp1.s0;
+               src2.sf = tmp2.s0;
+               src3.sf = tmp3.s0;
+            break;
+            default:
+            break;
+        }
+    }
+    else if (inx > (input_width - 16))
+    {
+        int  left = 16 - (input_width - inx);
+        VXC_Vload16(src0, src_ptr, 0);
+        src_ptr = src_ptr + input_width;
+        VXC_Vload16(src1, src_ptr, 0);
+        src_ptr = src_ptr + input_width;
+        VXC_Vload16(src2, src_ptr, 0);
+        src_ptr = src_ptr + input_width;
+        VXC_Vload16(src3, src_ptr, 0);
+        switch (left)
+        {
+            case 1:
+                src0.sf = pad_value;
+                src1.sf = pad_value;
+                src2.sf = pad_value;
+                src3.sf = pad_value;
+            break;
+            case 2:
+                src0.sef = pad_value;
+                src1.sef = pad_value;
+                src2.sef = pad_value;
+                src3.sef = pad_value;
+            break;
+            case 3:
+                src0.sdef = pad_value;
+                src1.sdef = pad_value;
+                src2.sdef = pad_value;
+                src3.sdef = pad_value;
+            break;
+            case 4:
+                src0.scdef = pad_value;
+                src1.scdef = pad_value;
+                src2.scdef = pad_value;
+                src3.scdef = pad_value;
+            break;
+            case 5:
+                src0.sb = pad_value;
+                src1.sb = pad_value;
+                src2.sb = pad_value;
+                src3.sb = pad_value;
+                src0.scdef = pad_value;
+                src1.scdef = pad_value;
+                src2.scdef = pad_value;
+                src3.scdef = pad_value;
+            break;
+            case 6:
+                src0.sab = pad_value;
+                src1.sab = pad_value;
+                src2.sab = pad_value;
+                src3.sab = pad_value;
+                src0.scdef = pad_value;
+                src1.scdef = pad_value;
+                src2.scdef = pad_value;
+                src3.scdef = pad_value;
+            break;
+            case 7:
+                src0.s9ab = pad_value;
+                src1.s9ab = pad_value;
+                src2.s9ab = pad_value;
+                src3.s9ab = pad_value;
+                src0.scdef = pad_value;
+                src1.scdef = pad_value;
+                src2.scdef = pad_value;
+                src3.scdef = pad_value;
+            break;
+            case 8:
+                src0.s89ab = pad_value;
+                src1.s89ab = pad_value;
+                src2.s89ab = pad_value;
+                src3.s89ab = pad_value;
+                src0.scdef = pad_value;
+                src1.scdef = pad_value;
+                src2.scdef = pad_value;
+                src3.scdef = pad_value;
+            break;
+            case 9:
+                src0.s7 = pad_value;
+                src1.s7 = pad_value;
+                src2.s7 = pad_value;
+                src3.s7 = pad_value;
+                src0.s89ab = pad_value;
+                src1.s89ab = pad_value;
+                src2.s89ab = pad_value;
+                src3.s89ab = pad_value;
+                src0.scdef = pad_value;
+                src1.scdef = pad_value;
+                src2.scdef = pad_value;
+                src3.scdef = pad_value;
+            break;
+            case 10:
+                src0.s67 = pad_value;
+                src1.s67 = pad_value;
+                src2.s67 = pad_value;
+                src3.s67 = pad_value;
+                src0.s89ab = pad_value;
+                src1.s89ab = pad_value;
+                src2.s89ab = pad_value;
+                src3.s89ab = pad_value;
+                src0.scdef = pad_value;
+                src1.scdef = pad_value;
+                src2.scdef = pad_value;
+                src3.scdef = pad_value;
+            break;
+            case 11:
+                src0.s567 = pad_value;
+                src1.s567 = pad_value;
+                src2.s567 = pad_value;
+                src3.s567 = pad_value;
+                src0.s89ab = pad_value;
+                src1.s89ab = pad_value;
+                src2.s89ab = pad_value;
+                src3.s89ab = pad_value;
+                src0.scdef = pad_value;
+                src1.scdef = pad_value;
+                src2.scdef = pad_value;
+                src3.scdef = pad_value;
+            break;
+            case 12:
+                src0.s4567 = pad_value;
+                src1.s4567 = pad_value;
+                src2.s4567 = pad_value;
+                src3.s4567 = pad_value;
+                src0.s89ab = pad_value;
+                src1.s89ab = pad_value;
+                src2.s89ab = pad_value;
+                src3.s89ab = pad_value;
+                src0.scdef = pad_value;
+                src1.scdef = pad_value;
+                src2.scdef = pad_value;
+                src3.scdef = pad_value;
+            break;
+            case 13:
+                src0.s3 = pad_value;
+                src1.s3 = pad_value;
+                src2.s3 = pad_value;
+                src3.s3 = pad_value;
+                src0.s4567 = pad_value;
+                src1.s4567 = pad_value;
+                src2.s4567 = pad_value;
+                src3.s4567 = pad_value;
+                src0.s89ab = pad_value;
+                src1.s89ab = pad_value;
+                src2.s89ab = pad_value;
+                src3.s89ab = pad_value;
+                src0.scdef = pad_value;
+                src1.scdef = pad_value;
+                src2.scdef = pad_value;
+                src3.scdef = pad_value;
+            break;
+            case 14:
+                src0.s23 = pad_value;
+                src1.s23 = pad_value;
+                src2.s23 = pad_value;
+                src3.s23 = pad_value;
+                src0.s4567 = pad_value;
+                src1.s4567 = pad_value;
+                src2.s4567 = pad_value;
+                src3.s4567 = pad_value;
+                src0.s89ab = pad_value;
+                src1.s89ab = pad_value;
+                src2.s89ab = pad_value;
+                src3.s89ab = pad_value;
+                src0.scdef = pad_value;
+                src1.scdef = pad_value;
+                src2.scdef = pad_value;
+                src3.scdef = pad_value;
+            break;
+            case 15:
+                src0.s123 = pad_value;
+                src1.s123 = pad_value;
+                src2.s123 = pad_value;
+                src3.s123 = pad_value;
+                src0.s4567 = pad_value;
+                src1.s4567 = pad_value;
+                src2.s4567 = pad_value;
+                src3.s4567 = pad_value;
+                src0.s89ab = pad_value;
+                src1.s89ab = pad_value;
+                src2.s89ab = pad_value;
+                src3.s89ab = pad_value;
+                src0.scdef = pad_value;
+                src1.scdef = pad_value;
+                src2.scdef = pad_value;
+                src3.scdef = pad_value;
+            break;
+            default:
+            break;
+        }
+    }
+    else
+    {
+        VXC_Vload16(src0, src_ptr, 0);
+        src_ptr = src_ptr + input_width;
+        VXC_Vload16(src1, src_ptr, 0);
+        src_ptr = src_ptr + input_width;
+        VXC_Vload16(src2, src_ptr, 0);
+        src_ptr = src_ptr + input_width;
+        VXC_Vload16(src3, src_ptr, 0);
+    }
+
+    VXC_Vstore16(dst_ptr, 0, src0);
+    dst_ptr = dst_ptr + output_width;
+    VXC_Vstore16(dst_ptr, 0, src1);
+    dst_ptr = dst_ptr + output_width;
+    VXC_Vstore16(dst_ptr, 0, src2);
+    dst_ptr = dst_ptr + output_width;
+    VXC_Vstore16(dst_ptr, 0, src3);
+}
+
+__kernel void vxcTensorPad_Const16Bits_Small(
+    image2d_array_t input,
+    int padLeft,
+    int padRight,
+    int padTop,
+    int padBottom,
+    image2d_array_t output)
+{
+    int gidx = get_global_id(0);
+    int gidy = get_global_id(1);
+    int gidz = get_global_id(2);
+    int4 coord_out = (int4)(gidx, gidy, gidz, 0);
+    int inx = gidx - padLeft;
+    int iny = gidy - padTop;
+    int4 coord_in = (int4)(inx, iny, gidz, 0);
+    vxc_short8 src0, src1, src2, src3;
+    VXC_ReadImage2DArray(src0, input, coord_in, VXC_5BITOFFSET_XY(0, 0), VXC_MODIFIER(0, 0, 0, VXC_RM_TowardZero, 0));
+    VXC_ReadImage2DArray(src1, input, coord_in, VXC_5BITOFFSET_XY(0, 1), VXC_MODIFIER(0, 0, 0, VXC_RM_TowardZero, 0));
+    VXC_ReadImage2DArray(src2, input, coord_in, VXC_5BITOFFSET_XY(0, 2), VXC_MODIFIER(0, 0, 0, VXC_RM_TowardZero, 0));
+    VXC_ReadImage2DArray(src3, input, coord_in, VXC_5BITOFFSET_XY(0, 3), VXC_MODIFIER(0, 0, 0, VXC_RM_TowardZero, 0));
+    VXC_WriteImage2DArray(output, coord_out, src0, VXC_MODIFIER(0, 0, 0, VXC_RM_TowardZero, 0));
+    coord_out.y++;
+    VXC_WriteImage2DArray(output, coord_out, src1, VXC_MODIFIER(0, 0, 0, VXC_RM_TowardZero, 0));
+    coord_out.y++;
+    VXC_WriteImage2DArray(output, coord_out, src2, VXC_MODIFIER(0, 0, 0, VXC_RM_TowardZero, 0));
+    coord_out.y++;
+    VXC_WriteImage2DArray(output, coord_out, src3, VXC_MODIFIER(0, 0, 0, VXC_RM_TowardZero, 0));
+}
+
+__kernel void vxcTensorPad_Const8Bits_Small(
+    image2d_array_t input,
+    int padLeft,
+    int padRight,
+    int padTop,
+    int padBottom,
+    image2d_array_t output)
+{
+    int gidx = get_global_id(0);
+    int gidy = get_global_id(1);
+    int gidz = get_global_id(2);
+    int4 coord_out = (int4)(gidx, gidy, gidz, 0);
+    int inx = gidx - padLeft;
+    int iny = gidy - padTop;
+    int4 coord_in = (int4)(inx, iny, gidz, 0);
+    vxc_char16 src0, src1, src2, src3;
+    VXC_ReadImage2DArray(src0, input, coord_in, VXC_5BITOFFSET_XY(0, 0), VXC_MODIFIER(0, 0, 0, VXC_RM_TowardZero, 0));
+    VXC_ReadImage2DArray(src1, input, coord_in, VXC_5BITOFFSET_XY(0, 1), VXC_MODIFIER(0, 0, 0, VXC_RM_TowardZero, 0));
+    VXC_ReadImage2DArray(src2, input, coord_in, VXC_5BITOFFSET_XY(0, 2), VXC_MODIFIER(0, 0, 0, VXC_RM_TowardZero, 0));
+    VXC_ReadImage2DArray(src3, input, coord_in, VXC_5BITOFFSET_XY(0, 3), VXC_MODIFIER(0, 0, 0, VXC_RM_TowardZero, 0));
+    VXC_WriteImage2DArray(output, coord_out, src0, VXC_MODIFIER(0, 0, 0, VXC_RM_TowardZero, 0));
+    coord_out.y++;
+    VXC_WriteImage2DArray(output, coord_out, src1, VXC_MODIFIER(0, 0, 0, VXC_RM_TowardZero, 0));
+    coord_out.y++;
+    VXC_WriteImage2DArray(output, coord_out, src2, VXC_MODIFIER(0, 0, 0, VXC_RM_TowardZero, 0));
+    coord_out.y++;
+    VXC_WriteImage2DArray(output, coord_out, src3, VXC_MODIFIER(0, 0, 0, VXC_RM_TowardZero, 0));
+}
